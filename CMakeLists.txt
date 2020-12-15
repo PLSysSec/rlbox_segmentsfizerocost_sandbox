@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
-set(CMAKE_C_COMPILER /usr/bin/clang-11)
-set(CMAKE_CXX_COMPILER /usr/bin/clang++-11)
+
+set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm/bin/clang)
+set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm/bin/clang++)
+
+# set(CMAKE_C_COMPILER /usr/bin/clang-11)
+# set(CMAKE_CXX_COMPILER /usr/bin/clang++-11)
+# set(COMPILER_LIB_PATH /usr/lib/llvm-11/lib/clang/11.0.0)
 
 project(rlbox_segmentsfi
         VERSION 0.1
@@ -104,11 +110,14 @@ set(ZERO_COST_FLAGS
   # -fsanitize=safe-stack -fstack-clash-protection # Safe stack
   -flto -fuse-ld=lld # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
-  /usr/lib/llvm-11/lib/clang/11.0.0/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
+  ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
   -ftrivial-auto-var-init=zero -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang # stack variable initialization
 )
 
-set(MALLOC_WRAPPER_FLAGS
+set(SEGMENTSFI_COMPILE_FLAGS
+  # -mseparate-stack-seg
+)
+set(SEGMENTSFI_LINK_FLAGS
   -Wl,--wrap=malloc
   -Wl,--wrap=free
   -Wl,--wrap=calloc
@@ -116,18 +125,20 @@ set(MALLOC_WRAPPER_FLAGS
 )
 
 add_library(rlbox_glue_lib_static STATIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
-                                         ${CMAKE_SOURCE_DIR}/c_src/malloc_wrap.c)
+                                         ${CMAKE_SOURCE_DIR}/c_src/segmentsfi_sandbox_runtime.cpp)
 target_include_directories(rlbox_glue_lib_static
-                           PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib)
-target_compile_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS})
-target_link_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${MALLOC_WRAPPER_FLAGS})
+                           PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib
+                                  ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_COMPILE_FLAGS})
+target_link_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_LINK_FLAGS})
 
 add_library(rlbox_glue_lib_shared SHARED ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
-                                         ${CMAKE_SOURCE_DIR}/c_src/malloc_wrap.c)
+                                         ${CMAKE_SOURCE_DIR}/c_src/segmentsfi_sandbox_runtime.cpp)
 target_include_directories(rlbox_glue_lib_shared
-                           PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib)
-target_compile_options(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_FLAGS})
-target_link_options(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_FLAGS} ${MALLOC_WRAPPER_FLAGS})
+                           PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib
+                                  ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_COMPILE_FLAGS})
+target_link_options(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_LINK_FLAGS})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(DYLIB_EXT "dylib")
@@ -155,7 +166,7 @@ target_compile_definitions(test_rlbox_glue PUBLIC
 target_link_options(test_rlbox_glue PUBLIC
   -rdynamic
   # -Wl,--whole-archive
-  # /usr/lib/llvm-11/lib/clang/11.0.0/lib/linux/libclang_rt.safestack-i386.a
+  # ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.safestack-i386.a
   # -Wl,--no-whole-archive
 )
 

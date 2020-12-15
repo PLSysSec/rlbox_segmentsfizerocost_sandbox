@@ -11,6 +11,8 @@
 
 #include "rlbox_helpers.hpp"
 
+#include "segmentsfi_sandbox_runtime.h"
+
 namespace rlbox {
 
 class rlbox_segmentsfi_sandbox;
@@ -68,6 +70,8 @@ public:
 
 private:
   void* sandbox = nullptr;
+  void* malloc_index = 0;
+  void* free_index = 0;
 
   const uint32_t segmentsfi_app_domain_perms = 0;
   // 0b1100 --- disallow access to domain 1
@@ -108,6 +112,9 @@ protected:
       char* error = dlerror();
       detail::dynamic_check(sandbox != nullptr, error);
     }
+
+    malloc_index = impl_lookup_symbol("__wrap_malloc");
+    free_index = impl_lookup_symbol("__wrap_free");
   }
 
   inline void impl_destroy_sandbox() {
@@ -144,17 +151,6 @@ protected:
       const void* example_unsandboxed_ptr))
   {
     return const_cast<T_PointerType>(p);
-  }
-
-  inline T_PointerType impl_malloc_in_sandbox(size_t size)
-  {
-    void* p = malloc(size);
-    return p;
-  }
-
-  inline void impl_free_in_sandbox(T_PointerType p)
-  {
-    free(p);
   }
 
   static inline bool impl_is_in_same_sandbox(const void*, const void*)
@@ -217,6 +213,22 @@ protected:
     });
 
     return reinterpret_cast<T_PointerType>(chosen_trampoline);
+  }
+
+  inline T_PointerType impl_malloc_in_sandbox(size_t size)
+  {
+    using T_Func = void*(size_t);
+    T_PointerType ret = impl_invoke_with_func_ptr<T_Func, T_Func>(
+      reinterpret_cast<T_Func*>(malloc_index),
+      size);
+    return ret;
+  }
+
+  inline void impl_free_in_sandbox(T_PointerType p)
+  {
+    using T_Func = void(void*);
+    impl_invoke_with_func_ptr<T_Func, T_Func>(
+      reinterpret_cast<T_Func*>(free_index), p);
   }
 
   static inline std::pair<rlbox_segmentsfi_sandbox*, void*>
