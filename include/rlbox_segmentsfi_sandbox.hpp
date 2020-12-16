@@ -39,17 +39,19 @@ rlbox_segmentsfi_sandbox_thread_data* get_rlbox_segmentsfi_sandbox_thread_data()
 
 #endif
 
-#define SET_MPK_PERMISSIONS(pkru) {}
+#define GET_CURR_DATA_SEGMENT(curr_ds) { \
+  asm volatile("mov %%ds, %0\n\t"        \
+            : "=r" (curr_ds)             \
+            :                            \
+            : );                         \
+}
 
-// #define SET_MPK_PERMISSIONS(pkru)                       \
-//   {                                                     \
-//       unsigned int eax = pkru;                          \
-//       unsigned int ecx = 0;                             \
-//       unsigned int edx = 0;                             \
-//       asm volatile(".byte 0x0f,0x01,0xef\n\t"           \
-//                   : : "a" (eax), "c" (ecx), "d" (edx)); \
-//   }
-
+#define CHANGE_DATA_SEGMENT(ds) { \
+  asm volatile("mov %0, %%ds\n\t" \
+            :                     \
+            : "r" (ds)            \
+            : );                  \
+}
 
 /**
  * @brief Class that implements the segmentsfi sandbox.
@@ -72,9 +74,9 @@ private:
   std::unique_ptr<segmentsfi_sandbox> segment_info = nullptr;
   void* sandbox = nullptr;
 
-  const uint32_t segmentsfi_app_domain_perms = 0;
-  // 0b1100 --- disallow access to domain 1
-  const uint32_t segmentsfi_sbx_domain_perms = 12;
+  uint16_t segmentsfi_app_domain = 0;
+  uint16_t segmentsfi_sbx_domain = 0;
+
   RLBOX_SHARED_LOCK(callback_mutex);
   static inline const uint32_t MAX_CALLBACKS = 64;
   void* callback_unique_keys[MAX_CALLBACKS]{ 0 };
@@ -90,7 +92,7 @@ private:
 #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
     auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
 #endif
-    SET_MPK_PERMISSIONS(thread_data.sandbox->segmentsfi_app_domain_perms);
+    CHANGE_DATA_SEGMENT(thread_data.sandbox->segmentsfi_app_domain);
     thread_data.last_callback_invoked = N;
     using T_Func = T_Ret (*)(T_Args...);
     T_Func func;
@@ -114,6 +116,9 @@ protected:
 
     segment_info = segmentsfi_sandbox::create_sandbox();
     detail::dynamic_check(segment_info != nullptr, "Setting up segments failed");
+
+    GET_CURR_DATA_SEGMENT(segmentsfi_app_domain);
+    segmentsfi_sbx_domain = segment_info->get_heap_segment();
   }
 
   inline void impl_destroy_sandbox() {
@@ -123,23 +128,29 @@ protected:
   template<typename T>
   inline void* impl_get_unsandboxed_pointer(T_PointerType p) const
   {
-    return p;
+    auto heap_base = segment_info->get_heap_location();
+    auto ret = ((uintptr_t)heap_base) + ((uintptr_t)p);
+    return (void*) ret;
   }
 
   template<typename T>
   inline T_PointerType impl_get_sandboxed_pointer(const void* p) const
   {
-    return const_cast<T_PointerType>(p);
+    auto ret = ((uintptr_t)p) & (SEGMENT_SFI_HEAP_SIZE - 1);
+    return (T_PointerType) ret;
   }
 
   template<typename T>
   static inline void* impl_get_unsandboxed_pointer_no_ctx(
     T_PointerType p,
-    const void* /* example_unsandboxed_ptr */,
-    rlbox_segmentsfi_sandbox* (*/* expensive_sandbox_finder */)(
+    const void* example_unsandboxed_ptr,
+    rlbox_segmentsfi_sandbox* (* /* expensive_sandbox_finder */)(
       const void* example_unsandboxed_ptr))
   {
-    return p;
+    auto p_val = (uintptr_t)p;
+    auto heap_base = p_val & ~(SEGMENT_SFI_HEAP_SIZE - 1);
+    auto ret = ((uintptr_t)heap_base) + p_val;
+    return (void*) ret;
   }
 
   template<typename T>
@@ -149,7 +160,8 @@ protected:
     rlbox_segmentsfi_sandbox* (*/* expensive_sandbox_finder */)(
       const void* example_unsandboxed_ptr))
   {
-    return const_cast<T_PointerType>(p);
+    auto ret = ((uintptr_t)p) & (SEGMENT_SFI_HEAP_SIZE - 1);
+    return (T_PointerType) ret;
   }
 
   static inline bool impl_is_in_same_sandbox(const void*, const void*)
@@ -189,7 +201,7 @@ protected:
     auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
 #endif
     thread_data.sandbox = this;
-    SET_MPK_PERMISSIONS(segmentsfi_sbx_domain_perms);
+    CHANGE_DATA_SEGMENT(segmentsfi_sbx_domain);
     return (*func_ptr)(params...);
   }
 

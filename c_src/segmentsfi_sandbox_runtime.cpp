@@ -51,10 +51,6 @@ void* segmentsfi_sbrk(ssize_t size) {
     return s->segmentsfi_sbrk(size);
 }
 
-#define PAGE_SIZE (1U << 12)
-// heap is 128mb = 128 * 2^10 * 2^10 = 128 * 2^8 pages
-#define HEAP_PAGES (128*(1U << 20)/PAGE_SIZE)
-
 // returns true if succeeded
 ldt_segment_resource::ldt_segment_resource(size_t pages) {
     mem_size = pages * PAGE_SIZE;
@@ -86,7 +82,7 @@ ldt_segment_resource::~ldt_segment_resource() {
 bool segmentsfi_sandbox::ldts_initialized = false;
 std::mutex segmentsfi_sandbox::segmentsfi_create_mutex;
 
-segmentsfi_sandbox::segmentsfi_sandbox() : heap_segment(HEAP_PAGES) {}
+segmentsfi_sandbox::segmentsfi_sandbox() : heap_segment(SEGMENT_SFI_HEAP_PAGES) {}
 
 std::unique_ptr<segmentsfi_sandbox> segmentsfi_sandbox::create_sandbox() {
     const std::lock_guard<std::mutex> lock(segmentsfi_create_mutex);
@@ -111,13 +107,6 @@ std::unique_ptr<segmentsfi_sandbox> segmentsfi_sandbox::create_sandbox() {
     ret->sbrkEnd = (void*) (((uintptr_t)ret->heap_start) + PAGE_SIZE);
 
     return ret;
-}
-
-void* segmentsfi_sandbox::get_heap_location() {
-    return heap_start;
-}
-size_t segmentsfi_sandbox::get_heap_size() {
-    return heap_segment.mem_size;
 }
 
 #ifndef MAX_SIZE_T
