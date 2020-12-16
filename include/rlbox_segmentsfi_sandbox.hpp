@@ -69,9 +69,8 @@ public:
   // using can_grant_deny_access = void;
 
 private:
+  std::unique_ptr<segmentsfi_sandbox> segment_info = nullptr;
   void* sandbox = nullptr;
-  void* malloc_index = 0;
-  void* free_index = 0;
 
   const uint32_t segmentsfi_app_domain_perms = 0;
   // 0b1100 --- disallow access to domain 1
@@ -113,8 +112,8 @@ protected:
       detail::dynamic_check(sandbox != nullptr, error);
     }
 
-    malloc_index = impl_lookup_symbol("__wrap_malloc");
-    free_index = impl_lookup_symbol("__wrap_free");
+    segment_info = segmentsfi_sandbox::create_sandbox();
+    detail::dynamic_check(segment_info != nullptr, "Setting up segments failed");
   }
 
   inline void impl_destroy_sandbox() {
@@ -217,18 +216,21 @@ protected:
 
   inline T_PointerType impl_malloc_in_sandbox(size_t size)
   {
-    using T_Func = void*(size_t);
-    T_PointerType ret = impl_invoke_with_func_ptr<T_Func, T_Func>(
-      reinterpret_cast<T_Func*>(malloc_index),
-      size);
+    #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
+    auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
+#endif
+    thread_data.sandbox = this;
+    T_PointerType ret = segmentsfi_malloc(size);
     return ret;
   }
 
   inline void impl_free_in_sandbox(T_PointerType p)
   {
-    using T_Func = void(void*);
-    impl_invoke_with_func_ptr<T_Func, T_Func>(
-      reinterpret_cast<T_Func*>(free_index), p);
+    #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
+    auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
+#endif
+    thread_data.sandbox = this;
+    segmentsfi_free(p);
   }
 
   static inline std::pair<rlbox_segmentsfi_sandbox*, void*>
@@ -270,6 +272,15 @@ protected:
     RLBOX_UNUSED(num);
     success = true;
     return src;
+  }
+public:
+
+  static segmentsfi_sandbox* get_active_segmentinfo_sandbox()
+  {
+#ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
+    auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
+#endif
+    return thread_data.sandbox->segment_info.get();
   }
 };
 

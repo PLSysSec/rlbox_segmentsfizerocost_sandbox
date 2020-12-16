@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
-set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm/bin/clang)
-set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm/bin/clang++)
+set(COMPILER_LIB_PATH ../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+set(CMAKE_C_COMPILER ../ffbuilds/zerocost_llvm/bin/clang)
+set(CMAKE_CXX_COMPILER ../ffbuilds/zerocost_llvm/bin/clang++)
 
 # set(CMAKE_C_COMPILER /usr/bin/clang-11)
 # set(CMAKE_CXX_COMPILER /usr/bin/clang++-11)
@@ -124,16 +124,14 @@ set(SEGMENTSFI_LINK_FLAGS
   -Wl,--wrap=realloc
 )
 
-add_library(rlbox_glue_lib_static STATIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
-                                         ${CMAKE_SOURCE_DIR}/c_src/segmentsfi_sandbox_runtime.cpp)
+add_library(rlbox_glue_lib_static STATIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c)
 target_include_directories(rlbox_glue_lib_static
                            PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib
                                   ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_COMPILE_FLAGS})
 target_link_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_LINK_FLAGS})
 
-add_library(rlbox_glue_lib_shared SHARED ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
-                                         ${CMAKE_SOURCE_DIR}/c_src/segmentsfi_sandbox_runtime.cpp)
+add_library(rlbox_glue_lib_shared SHARED ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c)
 target_include_directories(rlbox_glue_lib_shared
                            PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib
                                   ${CMAKE_SOURCE_DIR}/include)
@@ -153,7 +151,8 @@ include(CTest)
 include(Catch)
 
 add_executable(test_rlbox_glue test/test_segmentsfi_sandbox_glue_main.cpp
-                               test/test_segmentsfi_sandbox_glue.cpp)
+                               test/test_segmentsfi_sandbox_glue.cpp
+                               c_src/segmentsfi_sandbox_runtime.cpp)
 target_include_directories(test_rlbox_glue PUBLIC include)
 target_include_directories(test_rlbox_glue
                            PUBLIC ${rlbox_SOURCE_DIR}/code/include)

@@ -4,33 +4,54 @@
 #include <memory>
 #include <mutex>
 
+class segmentsfi_sandbox;
 
 extern "C" {
+    void* dlmalloc(size_t size);
+    void dlfree(void* ptr);
+    void* dlcalloc(size_t num, size_t size);
+    void* dlrealloc(void *ptr, size_t new_size);
+
     void* __wrap_malloc(size_t size);
     void __wrap_free(void* ptr);
     void* __wrap_calloc(size_t num, size_t size);
     void* __wrap_realloc(void *ptr, size_t new_size);
+
+    void* segmentsfi_malloc(size_t size);
+    void segmentsfi_free(void* ptr);
+    void* segmentsfi_calloc(size_t num, size_t size);
+    void* segmentsfi_realloc(void *ptr, size_t new_size);
+
+    void* segmentsfi_sbrk(ssize_t size);
 }
 
 class ldt_segment_resource {
-    uint16_t segment_selector = 0;
-    std::unique_ptr<char[]> mem = nullptr;
-
 public:
+    uint16_t segment_selector = 0;
+    void* mem = nullptr;
+    size_t mem_size = 0;
+
     ldt_segment_resource(size_t pages);
     ~ldt_segment_resource();
 
     bool succesfully_initialized();
 };
 
-class sfisegment_sandbox {
+class segmentsfi_sandbox {
     static bool ldts_initialized;
     static std::mutex segmentsfi_create_mutex;
-    ldt_segment_resource stack_segment;
     ldt_segment_resource heap_segment;
 
-    sfisegment_sandbox();
+    void* heap_start = nullptr;
+    void* heap_end = nullptr;
+    // The state variable for emulated sbrk. Indicates how far we have "sbrk"ed.
+    void* sbrkEnd = nullptr;
+
+    segmentsfi_sandbox();
 public:
-    std::unique_ptr<sfisegment_sandbox> create_sandbox();
+    static std::unique_ptr<segmentsfi_sandbox> create_sandbox();
+    void* get_heap_location();
+    size_t get_heap_size();
+    void* segmentsfi_sbrk(ssize_t size);
 };
 

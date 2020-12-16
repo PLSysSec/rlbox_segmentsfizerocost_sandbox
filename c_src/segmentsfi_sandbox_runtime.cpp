@@ -1,150 +1,69 @@
-#define USE_DL_PREFIX
-#include "dlmalloc_inc.c"
-
-#include <stdlib.h>
-
-#include <asm/ldt.h>
-#include <asm/unistd_32.h>
+#include <sys/mman.h>
 
 #include "segmentsfi_sandbox_runtime.h"
+#include "rlbox_segmentsfi_sandbox.hpp"
+
+#define USE_DL_PREFIX
+// #define USE_LOCKS 1
+#define MORECORE segmentsfi_sbrk
+#define MORECORE_CANNOT_TRIM
+#define HAVE_MMAP 0
+#define HAVE_MREMAP 0
+#include "dlmalloc_inc.c"
+
+#include "ldt_manipulate_inc.cpp"
+#include "mmap_aligned_inc.cpp"
 
 void* __wrap_malloc(size_t size) {
-    return dlmalloc(size);
+    return segmentsfi_malloc(size);
 }
 
 void __wrap_free(void* ptr) {
-    return dlfree(ptr);
+    return segmentsfi_free(ptr);
 }
 
 void* __wrap_calloc(size_t num, size_t size) {
-    return dlcalloc(num, size);
+    return segmentsfi_calloc(num, size);
 }
 
 void* __wrap_realloc(void *ptr, size_t new_size) {
+    return segmentsfi_realloc(ptr, new_size);
+}
+
+void* segmentsfi_malloc(size_t size) {
+    return dlmalloc(size);
+}
+
+void segmentsfi_free(void* ptr) {
+    return dlfree(ptr);
+}
+
+void* segmentsfi_calloc(size_t num, size_t size) {
+    return dlcalloc(num, size);
+}
+
+void* segmentsfi_realloc(void *ptr, size_t new_size) {
     return dlrealloc(ptr, new_size);
 }
 
-static int modify_ldt(int func, void *ptr, unsigned long bytecount) {
-  return syscall(__NR_modify_ldt, func, ptr, bytecount);
+void* segmentsfi_sbrk(ssize_t size) {
+    segmentsfi_sandbox* s = rlbox::rlbox_segmentsfi_sandbox::get_active_segmentinfo_sandbox();
+    return s->segmentsfi_sbrk(size);
 }
 
-struct LdtEntry {
-  uint16_t limit_00to15;
-  uint16_t base_00to15;
-
-  unsigned int base_16to23 : 8;
-
-  unsigned int type : 5;
-  unsigned int descriptor_privilege : 2;
-  unsigned int present : 1;
-
-  unsigned int limit_16to19 : 4;
-  unsigned int available : 1;
-  unsigned int code_64_bit : 1;
-  unsigned int op_size_32 : 1;
-  unsigned int granularity : 1;
-
-  unsigned int base_24to31 : 8;
-};
-
-/*
- * Find a free selector.  Always invoked while holding nacl_ldt_mutex.
- */
-static int NaClFindUnusedEntryNumber() {
-  int size = sizeof(struct LdtEntry) * LDT_ENTRIES;
-  struct LdtEntry * entries = (struct LdtEntry *) malloc(size);
-  int retval = modify_ldt(0, entries, size);
-
-  if (-1 != retval) {
-    retval = -1;  /* In case we don't find any free entry */
-    for (int i = 0; i < LDT_ENTRIES; ++i) {
-      if (!entries[i].present) {
-        retval = i;
-        break;
-      }
-    }
-  }
-
-  free(entries);
-  return retval;
-}
-
-/*
- * Find and allocate an available selector, inserting an LDT entry with the
- * appropriate permissions. Returns 0 on failure, segment on success.
- */
-static uint16_t NaClLdtAllocateSelector(int entry_number,
-                                 int size_is_in_pages,
-                                 void* base_addr,
-                                 uint32_t size_minus_one) {
-    if (-1 == entry_number) {
-        // No free entries were available.
-        return 0;
-    }
-    struct user_desc ud;
-    ud.entry_number = entry_number;
-    ud.contents = MODIFY_LDT_CONTENTS_DATA;
-    ud.read_exec_only = 0;
-    ud.seg_32bit = 1;
-    ud.seg_not_present = 0;
-    ud.useable = 1;
-
-    if (size_is_in_pages && ((unsigned long) base_addr & 0xfff)) {
-        // Base address not page aligned
-        abort();
-    }
-    ud.base_addr = (unsigned long) base_addr;
-
-    if (size_minus_one > 0xfffff) {
-        // If size is in pages, no more than 2**20 pages can be protected.
-        // If size is in bytes, no more than 2**20 bytes can be protected.
-        abort();
-    }
-    ud.limit = size_minus_one;
-    ud.limit_in_pages = size_is_in_pages;
-
-    // Install the LDT entry.
-    int retval = modify_ldt(1, &ud, sizeof ud);
-    if (-1 == retval) {
-        return 0;
-    }
-
-    // Return an LDT selector with a requested privilege level of 3.
-    return (ud.entry_number << 3) | 0x7;
-}
-
-static void NaClLdtInitPlatformSpecific() {
-    // Allocate the last LDT entry to force the LDT to grow to its maximum size.
-    NaClLdtAllocateSelector(LDT_ENTRIES - 1, 0, 0, 0);
-}
-
-static uint16_t NaClAllocateSegmentForDataRegion(void * data_region_start, size_t data_pages) {
-    const int entry_number = NaClFindUnusedEntryNumber();
-    return NaClLdtAllocateSelector(entry_number, 1, data_region_start, data_pages - 1);
-}
-
-static void NaClLdtDeleteSelector(uint16_t selector) {
-    struct user_desc ud;
-    ud.entry_number = selector >> 3;
-    ud.seg_not_present = 1;
-    ud.base_addr = 0;
-    ud.limit = 0;
-    ud.limit_in_pages = 0;
-    ud.read_exec_only = 0;
-    ud.seg_32bit = 0;
-    ud.useable = 0;
-    ud.contents = MODIFY_LDT_CONTENTS_DATA;
-    modify_ldt(1, &ud, sizeof ud);
-}
-
+#define PAGE_SIZE (1U << 12)
+// heap is 128mb = 128 * 2^10 * 2^10 = 128 * 2^8 pages
+#define HEAP_PAGES (128*(1U << 20)/PAGE_SIZE)
 
 // returns true if succeeded
 ldt_segment_resource::ldt_segment_resource(size_t pages) {
-    const size_t mem_size = pages << 12;
-    mem = std::make_unique<char[]>(mem_size);
+    mem_size = pages * PAGE_SIZE;
+    mem = mmap_aligned(mem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, mem_size /* alignment */, 0 /* alignment_offset */);
 
-    if (mem != nullptr) {
-        segment_selector = NaClAllocateSegmentForDataRegion(mem.get(), pages);
+    if (mem == MAP_FAILED || mem == nullptr) {
+        mem = nullptr;
+    } else {
+        segment_selector = NaClAllocateSegmentForDataRegion(mem, pages);
     }
 }
 
@@ -153,26 +72,23 @@ bool ldt_segment_resource::succesfully_initialized() {
 }
 
 ldt_segment_resource::~ldt_segment_resource() {
+    if (mem != nullptr) {
+        munmap(mem, mem_size);
+        mem = nullptr;
+    }
     if (segment_selector != 0) {
         NaClLdtDeleteSelector(segment_selector);
         segment_selector = 0;
     }
 }
 
-
-// linux/posix default stack: 8mb = 8 * 2^10 * 2^10 = 8 * 2^8 pages
-#define stack_pages (8*(1U << 8))
-// nacl default
-#define heap_pages (1U << 18)
-
 // statics
-bool sfisegment_sandbox::ldts_initialized = false;
-std::mutex sfisegment_sandbox::segmentsfi_create_mutex;
+bool segmentsfi_sandbox::ldts_initialized = false;
+std::mutex segmentsfi_sandbox::segmentsfi_create_mutex;
 
-sfisegment_sandbox::sfisegment_sandbox() : stack_segment(stack_pages),
-                                           heap_segment(heap_pages) {}
+segmentsfi_sandbox::segmentsfi_sandbox() : heap_segment(HEAP_PAGES) {}
 
-std::unique_ptr<sfisegment_sandbox> sfisegment_sandbox::create_sandbox() {
+std::unique_ptr<segmentsfi_sandbox> segmentsfi_sandbox::create_sandbox() {
     const std::lock_guard<std::mutex> lock(segmentsfi_create_mutex);
 
     if (!ldts_initialized) {
@@ -180,13 +96,51 @@ std::unique_ptr<sfisegment_sandbox> sfisegment_sandbox::create_sandbox() {
         ldts_initialized = true;
     }
 
-    std::unique_ptr<sfisegment_sandbox> ret;
-    ret.reset(new sfisegment_sandbox());
-    if (!ret->stack_segment.succesfully_initialized() ||
-        !ret->heap_segment.succesfully_initialized()) {
+    std::unique_ptr<segmentsfi_sandbox> ret;
+    ret.reset(new segmentsfi_sandbox());
+    if (!ret->heap_segment.succesfully_initialized()) {
         return nullptr;
     }
+
+    ret->heap_start = ret->heap_segment.mem;
+    ret->heap_end = (void*) (((uintptr_t)ret->heap_start) - 1 + ret->heap_segment.mem_size);
+    // reserve the first page to ensure that null pointers fail as expected
+    if (mprotect(ret->heap_start, PAGE_SIZE, PROT_NONE) == -1) {
+        return nullptr;
+    }
+    ret->sbrkEnd = (void*) (((uintptr_t)ret->heap_start) + PAGE_SIZE);
 
     return ret;
 }
 
+void* segmentsfi_sandbox::get_heap_location() {
+    return heap_start;
+}
+size_t segmentsfi_sandbox::get_heap_size() {
+    return heap_segment.mem_size;
+}
+
+#ifndef MAX_SIZE_T
+#define MAX_SIZE_T           (~(size_t)0)
+#endif
+
+#ifndef MFAIL
+#define MFAIL                ((void*)(MAX_SIZE_T))
+#endif
+
+void* segmentsfi_sandbox::segmentsfi_sbrk(ssize_t size) {
+    if(size == 0) {
+        return (void*) ((uintptr_t)sbrkEnd);
+    } else if(size < 0) {
+        return (void*) MFAIL;
+    } else {
+        if(((uintptr_t)sbrkEnd+size) > ((uintptr_t)heap_end)) {
+            return (void*) MFAIL;
+        }
+        else {
+            void* oldsbrkEnd = sbrkEnd;
+            sbrkEnd = (void*) ((uintptr_t)oldsbrkEnd + size);
+            return oldsbrkEnd;
+        }
+    }
+}
