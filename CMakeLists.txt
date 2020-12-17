@@ -18,6 +18,8 @@ project(rlbox_segmentsfi
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+SET(ASM_OPTIONS "-x assembler-with-cpp")
+enable_language(C CXX ASM)
 
 # This is meant to work only on 32-bit mode as Segments support is removed in 64-bit
 add_compile_options(-m32)
@@ -115,7 +117,7 @@ set(ZERO_COST_FLAGS
 )
 
 set(SEGMENTSFI_COMPILE_FLAGS
-  # -mseparate-stack-seg
+  -mseparate-stack-seg
 )
 set(SEGMENTSFI_LINK_FLAGS
   -Wl,--wrap=malloc
@@ -124,14 +126,16 @@ set(SEGMENTSFI_LINK_FLAGS
   -Wl,--wrap=realloc
 )
 
-add_library(rlbox_glue_lib_static STATIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c)
+add_library(rlbox_glue_lib_static STATIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
+                                         c_src/dlmalloc.c)
 target_include_directories(rlbox_glue_lib_static
                            PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib
                                   ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_COMPILE_FLAGS})
 target_link_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_FLAGS} ${SEGMENTSFI_LINK_FLAGS})
 
-add_library(rlbox_glue_lib_shared SHARED ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c)
+add_library(rlbox_glue_lib_shared SHARED ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
+                                         c_src/dlmalloc.c)
 target_include_directories(rlbox_glue_lib_shared
                            PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib
                                   ${CMAKE_SOURCE_DIR}/include)
@@ -152,7 +156,8 @@ include(Catch)
 
 add_executable(test_rlbox_glue test/test_segmentsfi_sandbox_glue_main.cpp
                                test/test_segmentsfi_sandbox_glue.cpp
-                               c_src/segmentsfi_sandbox_runtime.cpp)
+                               c_src/segmentsfi_sandbox_runtime.cpp
+                               c_src/trampoline.S)
 target_include_directories(test_rlbox_glue PUBLIC include)
 target_include_directories(test_rlbox_glue
                            PUBLIC ${rlbox_SOURCE_DIR}/code/include)

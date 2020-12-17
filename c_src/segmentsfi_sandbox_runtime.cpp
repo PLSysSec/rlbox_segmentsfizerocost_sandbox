@@ -3,53 +3,8 @@
 #include "segmentsfi_sandbox_runtime.h"
 #include "rlbox_segmentsfi_sandbox.hpp"
 
-#define USE_DL_PREFIX
-// #define USE_LOCKS 1
-#define MORECORE segmentsfi_sbrk
-#define MORECORE_CANNOT_TRIM
-#define HAVE_MMAP 0
-#define HAVE_MREMAP 0
-#include "dlmalloc_inc.c"
-
 #include "ldt_manipulate_inc.cpp"
 #include "mmap_aligned_inc.cpp"
-
-void* __wrap_malloc(size_t size) {
-    return segmentsfi_malloc(size);
-}
-
-void __wrap_free(void* ptr) {
-    return segmentsfi_free(ptr);
-}
-
-void* __wrap_calloc(size_t num, size_t size) {
-    return segmentsfi_calloc(num, size);
-}
-
-void* __wrap_realloc(void *ptr, size_t new_size) {
-    return segmentsfi_realloc(ptr, new_size);
-}
-
-void* segmentsfi_malloc(size_t size) {
-    return dlmalloc(size);
-}
-
-void segmentsfi_free(void* ptr) {
-    return dlfree(ptr);
-}
-
-void* segmentsfi_calloc(size_t num, size_t size) {
-    return dlcalloc(num, size);
-}
-
-void* segmentsfi_realloc(void *ptr, size_t new_size) {
-    return dlrealloc(ptr, new_size);
-}
-
-void* segmentsfi_sbrk(ssize_t size) {
-    segmentsfi_sandbox* s = rlbox::rlbox_segmentsfi_sandbox::get_active_segmentinfo_sandbox();
-    return s->segmentsfi_sbrk(size);
-}
 
 // returns true if succeeded
 ldt_segment_resource::ldt_segment_resource(size_t pages) {
@@ -99,37 +54,10 @@ std::unique_ptr<segmentsfi_sandbox> segmentsfi_sandbox::create_sandbox() {
     }
 
     ret->heap_start = ret->heap_segment.mem;
-    ret->heap_end = (void*) (((uintptr_t)ret->heap_start) - 1 + ret->heap_segment.mem_size);
     // reserve the first page to ensure that null pointers fail as expected
     if (mprotect(ret->heap_start, PAGE_SIZE, PROT_NONE) == -1) {
         return nullptr;
     }
-    ret->sbrkEnd = (void*) (((uintptr_t)ret->heap_start) + PAGE_SIZE);
 
     return ret;
-}
-
-#ifndef MAX_SIZE_T
-#define MAX_SIZE_T           (~(size_t)0)
-#endif
-
-#ifndef MFAIL
-#define MFAIL                ((void*)(MAX_SIZE_T))
-#endif
-
-void* segmentsfi_sandbox::segmentsfi_sbrk(ssize_t size) {
-    if(size == 0) {
-        return (void*) ((uintptr_t)sbrkEnd);
-    } else if(size < 0) {
-        return (void*) MFAIL;
-    } else {
-        if(((uintptr_t)sbrkEnd+size) > ((uintptr_t)heap_end)) {
-            return (void*) MFAIL;
-        }
-        else {
-            void* oldsbrkEnd = sbrkEnd;
-            sbrkEnd = (void*) ((uintptr_t)oldsbrkEnd + size);
-            return oldsbrkEnd;
-        }
-    }
 }

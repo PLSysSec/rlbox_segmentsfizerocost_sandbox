@@ -7,6 +7,7 @@
 #ifndef RLBOX_USE_CUSTOM_SHARED_LOCK
 #  include <shared_mutex>
 #endif
+#include <type_traits>
 #include <utility>
 
 #include "rlbox_helpers.hpp"
@@ -53,6 +54,59 @@ rlbox_segmentsfi_sandbox_thread_data* get_rlbox_segmentsfi_sandbox_thread_data()
             : );                  \
 }
 
+extern "C" {
+  struct change_ds_and_invoke_context {
+    uint32_t app_ds;
+    uint32_t sandbox_ds;
+    void* func_ptr;
+    uint32_t reserved1;
+    uint32_t reserved2;
+    uint32_t reserved3;
+  };
+  void change_ds_and_invoke(change_ds_and_invoke_context*);
+}
+
+  ///////////////////////////////////////////////////////////////
+
+namespace segmentssfi_detail {
+
+  // https://stackoverflow.com/questions/6512019/can-we-get-the-type-of-a-lambda-argument
+  namespace return_argument_detail {
+    template<typename Ret, typename... Rest>
+    Ret helper(Ret (*)(Rest...));
+
+    template<typename Ret, typename F, typename... Rest>
+    Ret helper(Ret (F::*)(Rest...));
+
+    template<typename Ret, typename F, typename... Rest>
+    Ret helper(Ret (F::*)(Rest...) const);
+
+    template<typename F>
+    decltype(helper(&F::operator())) helper(F);
+  } // namespace return_argument_detail
+
+  template<typename T>
+  using return_argument =
+    decltype(return_argument_detail::helper(std::declval<T>()));
+  ///////////////////////////////////////////////////////////////
+
+  namespace prepend_arg_type_detail {
+    template<typename T, typename T_ArgNew>
+    struct helper;
+
+    template<typename T_ArgNew, typename T_Ret, typename... T_Args>
+    struct helper<T_Ret(T_Args...), T_ArgNew>
+    {
+      using type = T_Ret(T_ArgNew, T_Args...);
+    };
+  }
+
+  template<typename T_Func, typename T_ArgNew>
+  using prepend_arg_type =
+    typename prepend_arg_type_detail::helper<T_Func, T_ArgNew>::type;
+
+}
+
 /**
  * @brief Class that implements the segmentsfi sandbox.
  */
@@ -73,6 +127,9 @@ public:
 private:
   std::unique_ptr<segmentsfi_sandbox> segment_info = nullptr;
   void* sandbox = nullptr;
+
+  void* malloc_index = 0;
+  void* free_index = 0;
 
   uint16_t segmentsfi_app_domain = 0;
   uint16_t segmentsfi_sbx_domain = 0;
@@ -119,6 +176,9 @@ protected:
 
     GET_CURR_DATA_SEGMENT(segmentsfi_app_domain);
     segmentsfi_sbx_domain = segment_info->get_heap_segment();
+
+    malloc_index = impl_lookup_symbol("dlmalloc");
+    free_index = impl_lookup_symbol("dlfree");
   }
 
   inline void impl_destroy_sandbox() {
@@ -201,8 +261,24 @@ protected:
     auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
 #endif
     thread_data.sandbox = this;
-    CHANGE_DATA_SEGMENT(segmentsfi_sbx_domain);
-    return (*func_ptr)(params...);
+    //CHANGE_DATA_SEGMENT(segmentsfi_sbx_domain);
+    //add_params(T_Converted, uint32_t, uint32_t);
+    using T_Invoker = segmentssfi_detail::prepend_arg_type<T_Converted, change_ds_and_invoke_context*>;
+        auto invoker = (T_Invoker*) change_ds_and_invoke;
+
+    change_ds_and_invoke_context ctx;
+    ctx.app_ds = segmentsfi_app_domain;
+    ctx.sandbox_ds = segmentsfi_sbx_domain;
+    ctx.func_ptr = (void*) func_ptr;
+
+    using T_Ret = segmentssfi_detail::return_argument<T_Converted>;
+
+    if constexpr (std::is_void_v<T_Ret>) {
+      (*invoker)(&ctx, params...);
+    } else {
+      auto ret = (*invoker)(&ctx, params...);
+      return ret;
+    }
   }
 
   template<typename T_Ret, typename... T_Args>
@@ -228,21 +304,18 @@ protected:
 
   inline T_PointerType impl_malloc_in_sandbox(size_t size)
   {
-    #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
-    auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
-#endif
-    thread_data.sandbox = this;
-    T_PointerType ret = segmentsfi_malloc(size);
+    using T_Func = void*(size_t);
+    T_PointerType ret = impl_invoke_with_func_ptr<T_Func, T_Func>(
+      reinterpret_cast<T_Func*>(malloc_index),
+      size);
     return ret;
   }
 
   inline void impl_free_in_sandbox(T_PointerType p)
   {
-    #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
-    auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
-#endif
-    thread_data.sandbox = this;
-    segmentsfi_free(p);
+    using T_Func = void(void*);
+    impl_invoke_with_func_ptr<T_Func, T_Func>(
+      reinterpret_cast<T_Func*>(free_index), p);
   }
 
   static inline std::pair<rlbox_segmentsfi_sandbox*, void*>
