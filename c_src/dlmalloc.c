@@ -12,7 +12,7 @@ void* segmentsfi_sbrk(ssize_t size);
 #include "dlmalloc_inc.c"
 
 #define PAGE_SIZE (1U << 12)
-void* sbrkEnd = (void*) PAGE_SIZE;
+static void* sbrkEnd = (void*) PAGE_SIZE;
 #define SEGMENT_SFI_HEAP_BITS 27
 #define SEGMENT_SFI_HEAP_SIZE (1U << SEGMENT_SFI_HEAP_BITS)
 const uintptr_t heap_end = SEGMENT_SFI_HEAP_SIZE - 1;
