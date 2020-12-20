@@ -4,7 +4,8 @@
 change_ds_and_invoke:
 _change_ds_and_invoke:
     pop %eax                    // prev return in caller save reg
-    pop %ecx                    // ctx in caller save reg
+    mov curr_segment_sfi_context@indntpoff, %ecx //retrieve curr switch context
+    mov %gs:(%ecx), %ecx
     mov %ebx      , 0x10(%ecx)  // save two callee save regs so we can use it
     mov %esi      , 0x14(%ecx)
 
@@ -19,8 +20,7 @@ _change_ds_and_invoke:
     mov %esi      , %ds         // switch to app domain
     mov 0xc(%ebx) , %ecx        // get old return
 
-    push %ebx                   // restore the stack
-    push %ecx
+    push %ecx                   // restore the stack
 
     mov 0x14(%ebx), %esi        // restore esi callee save
     mov 0x10(%ebx), %ebx        // restore ebx callee save

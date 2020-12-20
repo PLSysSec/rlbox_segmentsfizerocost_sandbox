@@ -12,24 +12,32 @@ void* segmentsfi_sbrk(ssize_t size);
 #include "dlmalloc_inc.c"
 
 #define PAGE_SIZE (1U << 12)
-static void* sbrkEnd = (void*) PAGE_SIZE;
+static uintptr_t sbrkEnd = PAGE_SIZE;
 #define SEGMENT_SFI_HEAP_BITS 27
 #define SEGMENT_SFI_HEAP_SIZE (1U << SEGMENT_SFI_HEAP_BITS)
-const uintptr_t heap_end = SEGMENT_SFI_HEAP_SIZE - 1;
+static uintptr_t heap_end = SEGMENT_SFI_HEAP_SIZE - 1;
+
+void segmentsfi_set_alternate_heap_base(void* sandbox_heap_base) {
+    // This is the data segment setup we would use once sandboxing is fully setup
+    // This is a workaround where we use the actual sandbox heap base in the full address space
+    sbrkEnd = (uintptr_t)sandbox_heap_base + PAGE_SIZE;
+    heap_end = (uintptr_t)sandbox_heap_base + SEGMENT_SFI_HEAP_SIZE - 1;
+}
 
 void* segmentsfi_sbrk(ssize_t size) {
-    if(size == 0) {
-        return (void*) ((uintptr_t)sbrkEnd);
-    } else if(size < 0) {
+    if (size == 0) {
+        return (void*) sbrkEnd;
+    } else if (size < 0) {
         return (void*) MFAIL;
     } else {
-        if(((uintptr_t)sbrkEnd+size) > ((uintptr_t)heap_end)) {
+        uintptr_t new_end = sbrkEnd + size;
+        if (new_end > heap_end) {
             return (void*) MFAIL;
         }
         else {
-            void* oldsbrkEnd = sbrkEnd;
-            sbrkEnd = (void*) ((uintptr_t)oldsbrkEnd + size);
-            return oldsbrkEnd;
+            uintptr_t oldsbrkEnd = sbrkEnd;
+            sbrkEnd = new_end;
+            return (void*) oldsbrkEnd;
         }
     }
 }

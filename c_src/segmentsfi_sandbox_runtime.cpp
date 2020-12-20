@@ -14,7 +14,10 @@ ldt_segment_resource::ldt_segment_resource(size_t pages) {
     if (mem == MAP_FAILED || mem == nullptr) {
         mem = nullptr;
     } else {
-        segment_selector = NaClAllocateSegmentForDataRegion(mem, pages);
+        // This is the data segment setup we would use once sandboxing is fully setup
+        // segment_selector = NaClAllocateSegmentForDataRegion(mem, pages);
+        // This is a workaround that allows access to the full memory
+        segment_selector = NaClAllocateSegmentForDataRegion(nullptr, 1U<<20);
     }
 }
 

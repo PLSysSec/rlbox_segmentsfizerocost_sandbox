@@ -64,6 +64,9 @@ extern "C" {
     uint32_t reserved3;
   };
   void change_ds_and_invoke(change_ds_and_invoke_context*);
+
+  __attribute__((weak))
+  _Thread_local change_ds_and_invoke_context* curr_segment_sfi_context = 0;
 }
 
   ///////////////////////////////////////////////////////////////
@@ -160,27 +163,17 @@ private:
     // Callbacks are invoked through function pointers, cannot use std::forward
     // as we don't have caller context for T_Args, which means they are all
     // effectively passed by value
-    return func(params...);
+    if constexpr (std::is_void_v<T_Ret>) {
+      func(params...);
+      CHANGE_DATA_SEGMENT(thread_data.sandbox->segmentsfi_sbx_domain);
+    } else {
+      auto ret = func(params...);
+      CHANGE_DATA_SEGMENT(thread_data.sandbox->segmentsfi_sbx_domain);
+      return ret;
+    }
   }
 
 protected:
-  inline void impl_create_sandbox(const char* path) {
-    sandbox = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
-    if (sandbox == nullptr) {
-      char* error = dlerror();
-      detail::dynamic_check(sandbox != nullptr, error);
-    }
-
-    segment_info = segmentsfi_sandbox::create_sandbox();
-    detail::dynamic_check(segment_info != nullptr, "Setting up segments failed");
-
-    GET_CURR_DATA_SEGMENT(segmentsfi_app_domain);
-    segmentsfi_sbx_domain = segment_info->get_heap_segment();
-
-    malloc_index = impl_lookup_symbol("dlmalloc");
-    free_index = impl_lookup_symbol("dlfree");
-  }
-
   inline void impl_destroy_sandbox() {
     dlclose(sandbox);
   }
@@ -188,16 +181,22 @@ protected:
   template<typename T>
   inline void* impl_get_unsandboxed_pointer(T_PointerType p) const
   {
-    auto heap_base = segment_info->get_heap_location();
-    auto ret = ((uintptr_t)heap_base) + ((uintptr_t)p);
-    return (void*) ret;
+    // This is the data segment setup we would use once sandboxing is fully setup
+    // auto heap_base = segment_info->get_heap_location();
+    // auto ret = ((uintptr_t)heap_base) + ((uintptr_t)p);
+    // return (void*) ret;
+    // This is a workaround that allows access to the full memory
+    return (void*) p;
   }
 
   template<typename T>
   inline T_PointerType impl_get_sandboxed_pointer(const void* p) const
   {
-    auto ret = ((uintptr_t)p) & (SEGMENT_SFI_HEAP_SIZE - 1);
-    return (T_PointerType) ret;
+    // This is the data segment setup we would use once sandboxing is fully setup
+    // auto ret = ((uintptr_t)p) & (SEGMENT_SFI_HEAP_SIZE - 1);
+    // return (T_PointerType) ret;
+    // This is a workaround that allows access to the full memory
+    return (T_PointerType) p;
   }
 
   template<typename T>
@@ -207,21 +206,27 @@ protected:
     rlbox_segmentsfi_sandbox* (* /* expensive_sandbox_finder */)(
       const void* example_unsandboxed_ptr))
   {
-    auto p_val = (uintptr_t)p;
-    auto heap_base = p_val & ~(SEGMENT_SFI_HEAP_SIZE - 1);
-    auto ret = ((uintptr_t)heap_base) + p_val;
-    return (void*) ret;
+    // This is the data segment setup we would use once sandboxing is fully setup
+    // auto p_val = (uintptr_t)p;
+    // auto heap_base = p_val & ~(SEGMENT_SFI_HEAP_SIZE - 1);
+    // auto ret = ((uintptr_t)heap_base) + p_val;
+    // return (void*) ret;
+    // This is a workaround that allows access to the full memory
+    return (void*) p;
   }
 
   template<typename T>
   static inline T_PointerType impl_get_sandboxed_pointer_no_ctx(
     const void* p,
     const void* /* example_unsandboxed_ptr */,
-    rlbox_segmentsfi_sandbox* (*/* expensive_sandbox_finder */)(
+    rlbox_segmentsfi_sandbox* (* /* expensive_sandbox_finder */)(
       const void* example_unsandboxed_ptr))
   {
-    auto ret = ((uintptr_t)p) & (SEGMENT_SFI_HEAP_SIZE - 1);
-    return (T_PointerType) ret;
+    // This is the data segment setup we would use once sandboxing is fully setup
+    // auto ret = ((uintptr_t)p) & (SEGMENT_SFI_HEAP_SIZE - 1);
+    // return (T_PointerType) ret;
+    // This is a workaround that allows access to the full memory
+    return (T_PointerType) p;
   }
 
   static inline bool impl_is_in_same_sandbox(const void*, const void*)
@@ -261,22 +266,23 @@ protected:
     auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
 #endif
     thread_data.sandbox = this;
-    //CHANGE_DATA_SEGMENT(segmentsfi_sbx_domain);
-    //add_params(T_Converted, uint32_t, uint32_t);
-    using T_Invoker = segmentssfi_detail::prepend_arg_type<T_Converted, change_ds_and_invoke_context*>;
-        auto invoker = (T_Invoker*) change_ds_and_invoke;
+    auto invoker = (T_Converted*) change_ds_and_invoke;
 
     change_ds_and_invoke_context ctx;
     ctx.app_ds = segmentsfi_app_domain;
     ctx.sandbox_ds = segmentsfi_sbx_domain;
     ctx.func_ptr = (void*) func_ptr;
+    auto prev_curr_segment_sfi_context = curr_segment_sfi_context;
+    curr_segment_sfi_context = &ctx;
 
     using T_Ret = segmentssfi_detail::return_argument<T_Converted>;
 
     if constexpr (std::is_void_v<T_Ret>) {
-      (*invoker)(&ctx, params...);
+      (*invoker)(params...);
+      curr_segment_sfi_context = prev_curr_segment_sfi_context;
     } else {
-      auto ret = (*invoker)(&ctx, params...);
+      auto ret = (*invoker)(params...);
+      curr_segment_sfi_context = prev_curr_segment_sfi_context;
       return ret;
     }
   }
@@ -300,6 +306,29 @@ protected:
     });
 
     return reinterpret_cast<T_PointerType>(chosen_trampoline);
+  }
+
+  inline void impl_create_sandbox(const char* path) {
+    sandbox = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    if (sandbox == nullptr) {
+      char* error = dlerror();
+      detail::dynamic_check(sandbox != nullptr, error);
+    }
+
+    segment_info = segmentsfi_sandbox::create_sandbox();
+    detail::dynamic_check(segment_info != nullptr, "Setting up segments failed");
+
+    GET_CURR_DATA_SEGMENT(segmentsfi_app_domain);
+    segmentsfi_sbx_domain = segment_info->get_heap_segment();
+
+    malloc_index = impl_lookup_symbol("dlmalloc");
+    free_index = impl_lookup_symbol("dlfree");
+
+    // This is a workaround where we use the actual sandbox heap base in the full address space
+    void* heap_base = segment_info->get_heap_location();
+    void* func_ptr = impl_lookup_symbol("segmentsfi_set_alternate_heap_base");
+    using T_Func = void (void*);
+    impl_invoke_with_func_ptr<T_Func, T_Func>(reinterpret_cast<T_Func*>(func_ptr), heap_base);
   }
 
   inline T_PointerType impl_malloc_in_sandbox(size_t size)
