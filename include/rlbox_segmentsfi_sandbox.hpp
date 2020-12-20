@@ -27,7 +27,7 @@ struct rlbox_segmentsfi_sandbox_thread_data
 #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
 
 rlbox_segmentsfi_sandbox_thread_data* get_rlbox_segmentsfi_sandbox_thread_data();
-#  define RLBOX_MPK_SANDBOX_STATIC_VARIABLES()                                \
+#  define RLBOX_SEGMENTSSFI_SANDBOX_STATIC_VARIABLES()                                \
     thread_local rlbox::rlbox_segmentsfi_sandbox_thread_data                         \
       rlbox_segmentsfi_sandbox_thread_info{ 0, 0 };                                  \
     namespace rlbox {                                                          \
