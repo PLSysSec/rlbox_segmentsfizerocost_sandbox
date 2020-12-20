@@ -54,10 +54,26 @@ rlbox_segmentsfi_sandbox_thread_data* get_rlbox_segmentsfi_sandbox_thread_data()
             : );                  \
 }
 
+#define GET_CURR_CODE_SEGMENT(curr_cs) { \
+  asm volatile("mov %%cs, %0\n\t"        \
+            : "=r" (curr_cs)             \
+            :                            \
+            : );                         \
+}
+
+#define CHANGE_CODE_SEGMENT(cs) { \
+  asm volatile("mov %0, %%cs\n\t" \
+            :                     \
+            : "r" (cs)            \
+            : );                  \
+}
+
 extern "C" {
   struct change_ds_and_invoke_context {
     uint32_t app_ds;
+    uint32_t app_cs;
     uint32_t sandbox_ds;
+    uint32_t sandbox_cs;
     void* func_ptr;
     uint32_t reserved1;
     uint32_t reserved2;
@@ -125,14 +141,15 @@ public:
   // using can_grant_deny_access = void;
 
 private:
-  std::unique_ptr<segmentsfi_sandbox> segment_info = nullptr;
-  void* sandbox = nullptr;
+  std::unique_ptr<segmentsfi_sandbox> sandbox = nullptr;
 
   void* malloc_index = 0;
   void* free_index = 0;
 
-  uint16_t segmentsfi_app_domain = 0;
-  uint16_t segmentsfi_sbx_domain = 0;
+  uint16_t segmentsfi_app_data_segment = 0;
+  uint16_t segmentsfi_app_code_segment = 0;
+  uint16_t segmentsfi_sbx_data_domain = 0;
+  uint16_t segmentsfi_sbx_code_domain = 0;
 
   RLBOX_SHARED_LOCK(callback_mutex);
   static inline const uint32_t MAX_CALLBACKS = 64;
@@ -149,7 +166,8 @@ private:
 #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
     auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
 #endif
-    CHANGE_DATA_SEGMENT(thread_data.sandbox->segmentsfi_app_domain);
+    CHANGE_DATA_SEGMENT(thread_data.sandbox->segmentsfi_app_data_segment);
+    CHANGE_CODE_SEGMENT(thread_data.sandbox->segmentsfi_app_code_segment);
     thread_data.last_callback_invoked = N;
     using T_Func = T_Ret (*)(T_Args...);
     T_Func func;
@@ -165,30 +183,24 @@ private:
 
 protected:
   inline void impl_create_sandbox(const char* path) {
-    sandbox = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
-    if (sandbox == nullptr) {
-      char* error = dlerror();
-      detail::dynamic_check(sandbox != nullptr, error);
-    }
+    sandbox = segmentsfi_sandbox::create_sandbox(path, false, RTLD_LAZY | RTLD_LOCAL);
+    detail::dynamic_check(sandbox != nullptr, "Creating sandbox failed");
 
-    segment_info = segmentsfi_sandbox::create_sandbox();
-    detail::dynamic_check(segment_info != nullptr, "Setting up segments failed");
-
-    GET_CURR_DATA_SEGMENT(segmentsfi_app_domain);
-    segmentsfi_sbx_domain = segment_info->get_heap_segment();
+    GET_CURR_DATA_SEGMENT(segmentsfi_app_data_segment);
+    GET_CURR_CODE_SEGMENT(segmentsfi_app_code_segment);
+    segmentsfi_sbx_data_domain = sandbox->get_heap_segment();
+    segmentsfi_sbx_code_domain = sandbox->get_code_segment();
 
     malloc_index = impl_lookup_symbol("dlmalloc");
     free_index = impl_lookup_symbol("dlfree");
   }
 
-  inline void impl_destroy_sandbox() {
-    dlclose(sandbox);
-  }
+  inline void impl_destroy_sandbox() {}
 
   template<typename T>
   inline void* impl_get_unsandboxed_pointer(T_PointerType p) const
   {
-    auto heap_base = segment_info->get_heap_location();
+    auto heap_base = sandbox->get_heap_location();
     auto ret = ((uintptr_t)heap_base) + ((uintptr_t)p);
     return (void*) ret;
   }
@@ -224,6 +236,15 @@ protected:
     return (T_PointerType) ret;
   }
 
+  template<typename T = void>
+  void* impl_lookup_symbol(const char* func_name)
+  {
+    auto unsandboxed_ptr = sandbox->symbol_lookup(func_name);
+    detail::dynamic_check(unsandboxed_ptr != nullptr, "Symbol not found");
+    auto sandboxed_ptr = impl_get_unsandboxed_pointer<void>(unsandboxed_ptr);
+    return sandboxed_ptr;
+  }
+
   static inline bool impl_is_in_same_sandbox(const void*, const void*)
   {
     return true;
@@ -246,14 +267,6 @@ protected:
     return nullptr;
   }
 
-  template<typename T = void>
-  void* impl_lookup_symbol(const char* func_name)
-  {
-    auto ret = dlsym(sandbox, func_name);
-    detail::dynamic_check(ret != nullptr, "Symbol not found");
-    return ret;
-  }
-
   template<typename T, typename T_Converted, typename... T_Args>
   auto impl_invoke_with_func_ptr(T_Converted* func_ptr, T_Args&&... params)
   {
@@ -261,14 +274,17 @@ protected:
     auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
 #endif
     thread_data.sandbox = this;
-    //CHANGE_DATA_SEGMENT(segmentsfi_sbx_domain);
+    //CHANGE_DATA_SEGMENT(segmentsfi_sbx_data_domain);
+    //CHANGE_CODE_SEGMENT(segmentsfi_sbx_code_domain);
     //add_params(T_Converted, uint32_t, uint32_t);
     using T_Invoker = segmentssfi_detail::prepend_arg_type<T_Converted, change_ds_and_invoke_context*>;
         auto invoker = (T_Invoker*) change_ds_and_invoke;
 
     change_ds_and_invoke_context ctx;
-    ctx.app_ds = segmentsfi_app_domain;
-    ctx.sandbox_ds = segmentsfi_sbx_domain;
+    ctx.app_ds = segmentsfi_app_data_segment;
+    ctx.app_cs = segmentsfi_app_code_segment;
+    ctx.sandbox_ds = segmentsfi_sbx_data_domain;
+    ctx.sandbox_cs = segmentsfi_sbx_code_domain;
     ctx.func_ptr = (void*) func_ptr;
 
     using T_Ret = segmentssfi_detail::return_argument<T_Converted>;
@@ -357,15 +373,6 @@ protected:
     RLBOX_UNUSED(num);
     success = true;
     return src;
-  }
-public:
-
-  static segmentsfi_sandbox* get_active_segmentinfo_sandbox()
-  {
-#ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
-    auto& thread_data = *get_rlbox_segmentsfi_sandbox_thread_data();
-#endif
-    return thread_data.sandbox->segment_info.get();
   }
 };
 

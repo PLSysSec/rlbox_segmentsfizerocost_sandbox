@@ -55,6 +55,7 @@ static int NaClFindUnusedEntryNumber() {
  */
 static uint16_t NaClLdtAllocateSelector(int entry_number,
                                  int size_is_in_pages,
+                                 int is_read_exec_only,
                                  void* base_addr,
                                  uint32_t size_minus_one) {
     if (-1 == entry_number) {
@@ -63,8 +64,12 @@ static uint16_t NaClLdtAllocateSelector(int entry_number,
     }
     struct user_desc ud;
     ud.entry_number = entry_number;
-    ud.contents = MODIFY_LDT_CONTENTS_DATA;
-    ud.read_exec_only = 0;
+    if (is_read_exec_only) {
+      ud.contents = MODIFY_LDT_CONTENTS_DATA;
+    } else {
+      ud.contents = MODIFY_LDT_CONTENTS_CODE;
+    }
+    ud.read_exec_only = is_read_exec_only;
     ud.seg_32bit = 1;
     ud.seg_not_present = 0;
     ud.useable = 1;
@@ -95,12 +100,17 @@ static uint16_t NaClLdtAllocateSelector(int entry_number,
 
 static void NaClLdtInitPlatformSpecific() {
     // Allocate the last LDT entry to force the LDT to grow to its maximum size.
-    NaClLdtAllocateSelector(LDT_ENTRIES - 1, 0, 0, 0);
+    NaClLdtAllocateSelector(LDT_ENTRIES - 1, 0 /* size_is_in_pages */, 0 /* read_exec */, 0, 0);
 }
 
-static uint16_t NaClAllocateSegmentForDataRegion(void * data_region_start, size_t data_pages) {
+static uint16_t NaClAllocateSegmentForDataRegion(void * region_start, size_t pages) {
     const int entry_number = NaClFindUnusedEntryNumber();
-    return NaClLdtAllocateSelector(entry_number, 1, data_region_start, data_pages - 1);
+    return NaClLdtAllocateSelector(entry_number, 1 /* size_is_in_pages */, 0 /* read_exec */, region_start, pages - 1);
+}
+
+static uint16_t NaClAllocateSegmentForCodeRegion(void * region_start, size_t pages) {
+    const int entry_number = NaClFindUnusedEntryNumber();
+    return NaClLdtAllocateSelector(entry_number, 1 /* size_is_in_pages */, 1 /* read_exec */, region_start, pages - 1);
 }
 
 static void NaClLdtDeleteSelector(uint16_t selector) {
