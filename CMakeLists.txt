@@ -118,7 +118,7 @@ set(ZERO_COST_COMPILE_FLAGS
 
 set(ZERO_COST_LINK_FLAGS
   -fno-asm -fno-asm-blocks # avoid easy bypasses
-  # -fsanitize=safe-stack -fstack-clash-protection # Safe stack
+  -fsanitize=safe-stack -fstack-clash-protection # Safe stack
   -flto -fuse-ld=lld # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
   ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
@@ -178,9 +178,9 @@ target_compile_definitions(test_rlbox_glue PUBLIC
                            GLUE_LIB_PATH="${GLUE_LIB_SO}")
 target_link_options(test_rlbox_glue PUBLIC
   -rdynamic
-  # -Wl,--whole-archive
-  # ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.safestack-i386.a
-  # -Wl,--no-whole-archive
+  -Wl,--whole-archive
+  ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.safestack-i386.a
+  -Wl,--no-whole-archive
 )
 
 add_dependencies(test_rlbox_glue rlbox_glue_lib_shared)
