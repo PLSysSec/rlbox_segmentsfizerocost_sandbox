@@ -3,9 +3,10 @@
 .align 16
 change_ds_and_invoke:
 _change_ds_and_invoke:
+    call get_curr_segment_sfi_context@PLT //retrieve curr switch context
+    mov %eax, %ecx
+
     pop %eax                    // prev return in caller save reg
-    mov curr_segment_sfi_context@indntpoff, %ecx //retrieve curr switch context
-    mov %gs:(%ecx), %ecx
     mov %ebx      , 0x10(%ecx)  // save two callee save regs so we can use it
     mov %esi      , 0x14(%ecx)
 

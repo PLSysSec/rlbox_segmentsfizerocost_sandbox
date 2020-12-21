@@ -67,6 +67,11 @@ extern "C" {
 
   __attribute__((weak))
   _Thread_local change_ds_and_invoke_context* curr_segment_sfi_context = 0;
+
+  __attribute__((weak))
+  change_ds_and_invoke_context* get_curr_segment_sfi_context() {
+    return curr_segment_sfi_context;
+  }
 }
 
   ///////////////////////////////////////////////////////////////
