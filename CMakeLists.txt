@@ -109,7 +109,7 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/contrib")
 
 set(ZERO_COST_COMPILE_FLAGS
   -fno-asm -fno-asm-blocks # avoid easy bypasses
-  # -fsanitize=safe-stack -fstack-clash-protection # Safe stack
+  -fsanitize=safe-stack -fstack-clash-protection # Safe stack
   -flto ##-fuse-ld=lld # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
   ##${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
