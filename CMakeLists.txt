@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(COMPILER_LIB_PATH ../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
-set(CMAKE_C_COMPILER ../ffbuilds/zerocost_llvm/bin/clang)
-set(CMAKE_CXX_COMPILER ../ffbuilds/zerocost_llvm/bin/clang++)
+set(COMPILER_LIB_PATH ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+set(CMAKE_C_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm/bin/clang)
+set(CMAKE_CXX_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm/bin/clang++)
 
-# set(CMAKE_C_COMPILER /usr/bin/clang-11)
-# set(CMAKE_CXX_COMPILER /usr/bin/clang++-11)
-# set(COMPILER_LIB_PATH /usr/lib/llvm-11/lib/clang/11.0.0)
+# set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+# set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm/bin/clang)
+# set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm/bin/clang++)
 
 project(rlbox_segmentsfi
         VERSION 0.1
@@ -108,7 +108,7 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/contrib")
 # Lib ###################
 
 set(ZERO_COST_COMPILE_FLAGS
-  -fno-asm -fno-asm-blocks # avoid easy bypasses
+  -fno-asm -fno-asm-blocks -Werror=return-type # avoid easy bypasses
   -fsanitize=safe-stack -fstack-clash-protection # Safe stack
   -flto ##-fuse-ld=lld # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
@@ -117,7 +117,7 @@ set(ZERO_COST_COMPILE_FLAGS
 )
 
 set(ZERO_COST_LINK_FLAGS
-  -fno-asm -fno-asm-blocks # avoid easy bypasses
+  -fno-asm -fno-asm-blocks -Werror=return-type # avoid easy bypasses
   -fsanitize=safe-stack -fstack-clash-protection # Safe stack
   -flto -fuse-ld=lld # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
