@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
 
-# set(COMPILER_LIB_PATH ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
-# set(CMAKE_C_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang)
-# set(CMAKE_CXX_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang++)
+set(COMPILER_LIB_PATH ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+set(CMAKE_C_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang)
+set(CMAKE_CXX_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang++)
 
-set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
-set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang)
-set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang++)
+# set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+# set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang)
+# set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang++)
 
 project(rlbox_segmentsfi
         VERSION 0.1
