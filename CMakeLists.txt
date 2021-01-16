@@ -121,8 +121,12 @@ set(ZERO_COST_LINK_FLAGS
   -fsanitize=safe-stack -fstack-clash-protection # Safe stack
   -flto -fuse-ld=gold # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
-  ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
+  ##${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
   ##-ftrivial-auto-var-init=zero -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang # stack variable initialization
+)
+
+set(ZERO_COST_LINK_LIBRARIES
+  ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
 )
 
 set(SEGMENTSFI_COMPILE_FLAGS
@@ -142,6 +146,7 @@ target_include_directories(rlbox_glue_lib_static
                                   ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_COMPILE_FLAGS} ${SEGMENTSFI_COMPILE_FLAGS} -Wno-expansion-to-defined)
 target_link_options(rlbox_glue_lib_static PRIVATE ${ZERO_COST_LINK_FLAGS} ${SEGMENTSFI_LINK_FLAGS})
+target_link_libraries(rlbox_glue_lib_static PRIVATE ${ZERO_COST_LINK_LIBRARIES})
 
 add_library(rlbox_glue_lib_shared SHARED ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c
                                          c_src/dlmalloc.c)
@@ -150,6 +155,7 @@ target_include_directories(rlbox_glue_lib_shared
                                   ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_COMPILE_FLAGS} ${SEGMENTSFI_COMPILE_FLAGS} -Wno-expansion-to-defined)
 target_link_options(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_LINK_FLAGS} ${SEGMENTSFI_LINK_FLAGS})
+target_link_libraries(rlbox_glue_lib_shared PRIVATE ${ZERO_COST_LINK_LIBRARIES})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(DYLIB_EXT "dylib")
