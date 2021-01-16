@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(COMPILER_LIB_PATH ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
-set(CMAKE_C_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang)
-set(CMAKE_CXX_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang++)
+# set(COMPILER_LIB_PATH ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+# set(CMAKE_C_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang)
+# set(CMAKE_CXX_COMPILER ${CMAKE_SOURCE_DIR}/../ffbuilds/zerocost_llvm_install/bin/clang++)
 
-# set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
-# set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang)
-# set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang++)
+set(COMPILER_LIB_PATH /mnt/sata/ffbuilds/zerocost_llvm_install/lib/clang/12.0.0)
+set(CMAKE_C_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang)
+set(CMAKE_CXX_COMPILER /mnt/sata/ffbuilds/zerocost_llvm_install/bin/clang++)
 
 project(rlbox_segmentsfi
         VERSION 0.1
@@ -110,7 +110,7 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/contrib")
 set(ZERO_COST_COMPILE_FLAGS
   -fno-asm -fno-asm-blocks -Werror=return-type # avoid easy bypasses
   -fsanitize=safe-stack -fstack-clash-protection # Safe stack
-  -flto ##-fuse-ld=lld # Clang flags needed for cfi and maybe other passes
+  -flto ##-fuse-ld=gold # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
   ##${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
   -ftrivial-auto-var-init=zero -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang # stack variable initialization
@@ -119,7 +119,7 @@ set(ZERO_COST_COMPILE_FLAGS
 set(ZERO_COST_LINK_FLAGS
   -fno-asm -fno-asm-blocks -Werror=return-type # avoid easy bypasses
   -fsanitize=safe-stack -fstack-clash-protection # Safe stack
-  -flto -fuse-ld=lld # Clang flags needed for cfi and maybe other passes
+  -flto -fuse-ld=gold # Clang flags needed for cfi and maybe other passes
   -fsanitize=cfi-icall -fsanitize-cfi-canonical-jump-tables -fsanitize-cfi-cross-dso # forward edge protection
   ${COMPILER_LIB_PATH}/lib/linux/libclang_rt.cfi-i386.a # clang cfi runtime library
   ##-ftrivial-auto-var-init=zero -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang # stack variable initialization
