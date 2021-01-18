@@ -4,12 +4,13 @@
 #include <memory>
 #include <mutex>
 
-#define PAGE_SIZE (1U << 12)
+#define PAGE_SIZE_BITS 12
+#define PAGE_SIZE (1U << PAGE_SIZE_BITS)
 // Keep heap consistent with dlmalloc.c
-// heap is 128mb = 2^7 * 2^10 * 2^10
-#define SEGMENT_SFI_HEAP_BITS 27
+// heap is 32mb = 2^5 * 2^10 * 2^10
+#define SEGMENT_SFI_HEAP_BITS 25
 #define SEGMENT_SFI_HEAP_SIZE (1U << SEGMENT_SFI_HEAP_BITS)
-#define SEGMENT_SFI_HEAP_PAGES (SEGMENT_SFI_HEAP_SIZE/PAGE_SIZE)
+#define SEGMENT_SFI_HEAP_PAGES (1U << (SEGMENT_SFI_HEAP_BITS - PAGE_SIZE_BITS))
 
 class segmentsfi_sandbox;
 
