@@ -1,3 +1,8 @@
+
+#ifndef SEGMENTSFI_TRAMPOLINE_MODIFY_FUNCTION_CALL
+#define SEGMENTSFI_TRAMPOLINE_MODIFY_FUNCTION_CALL(x) x
+#endif
+
  .globl change_ds_and_invoke
 .type change_ds_and_invoke,@function
 .align 16
@@ -16,7 +21,7 @@ _change_ds_and_invoke:
     mov 0x8(%ebx) , %eax        // get func_ptr
     mov 0x0(%ebx) , %esi        // get app_domain
     mov 0x4(%ebx) , %ds         // switch to sandbox domain
-    call *%eax                  // call sbx function
+    SEGMENTSFI_TRAMPOLINE_MODIFY_FUNCTION_CALL(call *%eax) // call sbx function
 
     mov %esi      , %ds         // switch to app domain
     mov 0xc(%ebx) , %ecx        // get old return
@@ -27,3 +32,5 @@ _change_ds_and_invoke:
     mov 0x10(%ebx), %ebx        // restore ebx callee save
 
     ret
+
+#undef SEGMENTSFI_TRAMPOLINE_MODIFY_FUNCTION_CALL
